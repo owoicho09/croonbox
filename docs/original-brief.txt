@@ -1,0 +1,328 @@
+I want you to take ownership of building Croonbox into a complete, production-ready SaaS.
+
+Before writing code, inspect the entire existing project carefully and understand what is already there. The current Lovable version contains the original Croonbox visual identity and landing-page direction. Use that as the design reference rather than inventing a completely different theme.
+
+I do not want a clone of the existing incomplete app, and I do not want you blindly following its current implementation. Preserve the Croonbox brand and good existing UI decisions, but architect the actual product properly.
+
+Think about this as a real SaaS that companies should be able to sign up for and use without me manually helping them.
+
+PRODUCT
+
+Croonbox is an asynchronous video interview platform for hiring teams.
+
+The core idea is simple:
+
+An employer creates a job and defines the interview they want candidates to complete.
+
+They add structured interview questions and configure things such as preparation time, response limits, retakes, candidate instructions and interview deadline.
+
+They publish the interview and invite candidates.
+
+Invitations can be sent individually, to multiple candidates, or by importing a CSV. Resend will handle transactional email.
+
+Candidates do not create Croonbox accounts.
+
+Each candidate receives a secure interview link.
+
+When they open it, they should have a polished candidate experience that explains the interview, checks their camera and microphone, and guides them through the questions one at a time.
+
+For each question the candidate gets preparation time, records their video answer, can preview/retake where allowed, submits the response and continues.
+
+The interview should survive reasonable interruptions. If a candidate leaves after completing some questions and returns through their link, their completed work should still be there and they should continue from where they stopped.
+
+Candidate videos should be stored privately using Supabase Storage.
+
+After the candidate submits the full interview, Croonbox processes their responses.
+
+Each response is transcribed.
+
+AI then analyzes what the candidate actually said in the context of the job, question and any evaluation guidance provided by the employer.
+
+We are deliberately NOT building numerical candidate scoring.
+
+Do not produce things like:
+83%
+8/10
+confidence scores
+personality scores
+facial analysis
+emotion analysis
+candidate rankings
+
+AI should instead produce useful qualitative hiring insights such as:
+
+- answer summary
+- relevant evidence from the answer
+- strong signals
+- areas worth reviewing
+- overall interview summary
+- relevant experience demonstrated
+- areas to explore further
+- useful human follow-up questions
+
+The hiring team makes the decision.
+
+EMPLOYER EXPERIENCE
+
+An employer should be able to:
+
+create an account and company workspace
+
+create and manage jobs
+
+configure structured interview questions
+
+save jobs as drafts and publish them
+
+invite candidates
+
+see candidates associated with each job
+
+see whether candidates are invited, started, completed, processing or ready for review
+
+open a completed candidate
+
+watch their video responses
+
+read transcripts
+
+read AI interview insights
+
+leave internal review notes
+
+mark candidates as shortlisted, maybe or rejected
+
+invite team members to collaborate
+
+see useful hiring activity and analytics
+
+manage their subscription and usage
+
+The product should feel operational rather than like a collection of demo dashboards.
+
+The primary employer journey is:
+
+Create → Invite → Review → Decide.
+
+CANDIDATE EXPERIENCE
+
+The candidate side should be extremely simple.
+
+They should never feel like they have entered another complicated SaaS platform.
+
+Their experience is:
+
+Open interview link
+→ understand the interview
+→ check camera/microphone
+→ answer questions
+→ submit
+→ done.
+
+Design this experience particularly well for mobile because candidates may complete interviews from their phones.
+
+SAAS STRUCTURE
+
+Croonbox is multi-tenant.
+
+Every company has its own workspace and its data must remain isolated from every other company.
+
+There are ordinary employer users, organization owners/team members, candidates using secure interview links, and a private Croonbox platform administrator.
+
+Use a simple Owner / Member organization permission model for V1 rather than overengineering permissions.
+
+There should also be a private platform-admin area that allows the Croonbox operator to understand what is happening across the SaaS: organizations, users, jobs, subscriptions, interview activity, usage, processing problems, email problems, etc.
+
+TECHNOLOGY
+
+Use Next.js App Router.
+
+Use Supabase Postgres as the database.
+
+Do NOT use Supabase Auth.
+
+Implement normal application authentication with secure password storage and sessions, with signup, login, logout and password reset.
+
+Use Supabase Storage for private interview video storage.
+
+I can manually create required Supabase buckets if necessary.
+
+Use Resend for transactional emails.
+
+Use Stripe for billing/subscriptions.
+
+Use OpenAI for transcription and qualitative interview insights.
+
+The client currently has their domain and hosting associated with cPanel, but we have not inspected that hosting yet.
+
+Do not architect the application around cPanel.
+
+Keep the application deployment-portable. When we eventually inspect the cPanel environment, we will decide whether the Node application can run there or whether the domain should simply point to another application host.
+
+Configuration, service keys, domains, Stripe IDs, Resend settings, bucket names, model names and other environment-specific values should live in .env/environment configuration rather than being scattered through the codebase.
+
+PRICING
+
+Starter — Free
+
+Up to 3 active jobs
+50 candidate interviews per month
+Video recording/playback
+Transcripts
+Basic AI insights
+Email support
+
+Professional — $49/month
+
+Unlimited active jobs
+Unlimited interviews
+Advanced AI insights
+Custom evaluation guidance
+Team collaboration
+PDF reports
+Priority support
+
+Enterprise — Custom
+
+Future enterprise functionality can be architecturally possible without spending V1 development time building everything now.
+
+Stripe should ultimately control paid subscription state and plan entitlements.
+
+LANDING PAGE / DESIGN
+
+The existing Lovable landing page is the Croonbox visual reference.
+
+It uses a clean light background, royal blue accents, dark navy typography, white bordered cards, simple blue icons, generous spacing and straightforward SaaS design.
+
+I want the finished application to feel like that original Croonbox website naturally evolved into a complete product.
+
+Do not introduce a radically different design system simply because the dashboard needs more UI.
+
+The dashboard, auth pages, candidate interview experience, billing, settings and admin should all belong to the same Croonbox product.
+
+At the same time, use your own product-design judgment. Do not mechanically reproduce landing-page cards everywhere. Translate the existing visual language appropriately into a real application.
+
+The landing page itself should accurately sell the V1 product.
+
+Remove fabricated metrics/testimonials if they exist.
+
+Replace old promises around AI numeric scoring with qualitative AI interview insights.
+
+The strongest product value is that hiring teams can conduct structured first-round interviews without scheduling a live call with every candidate.
+
+IMPORTANT PRODUCT BOUNDARIES
+
+Croonbox V1 is not a full ATS.
+
+Do not add:
+
+CV screening
+career pages
+job marketplace
+employee onboarding
+payroll
+leave management
+offer letters
+background checks
+candidate accounts
+live interviewer scheduling
+ElevenLabs/live AI interviews
+numeric candidate scoring
+personality/emotion/facial analysis
+
+Keep the product focused.
+
+DATA / DOMAIN THINKING
+
+Reason properly about the underlying domain instead of modeling everything around pages.
+
+Conceptually the system revolves around:
+
+organizations
+users/memberships
+jobs
+interview questions
+candidates
+candidate invitations
+interview sessions
+candidate responses
+video assets
+transcripts
+AI insights
+human reviews/notes
+subscriptions/usage
+emails
+activity
+processing state
+
+A candidate identity should not necessarily be the same thing as their participation in one job because the same person could potentially be invited to another interview later.
+
+Think carefully about state transitions and failure cases.
+
+For example:
+
+candidate invited
+→ interview started
+→ responses progressively saved
+→ interview completed
+→ processing
+→ ready for review
+→ human reviewed
+
+Handle real-world cases such as interrupted interviews, failed uploads, failed transcription, AI processing failure, duplicate webhooks, invalid invite links, plan limits and unauthorized cross-organization access.
+
+Do not silently lose user work.
+
+QUALITY BAR
+
+I do not want a large collection of routes that merely compile.
+
+I want the main product loop to actually work end-to-end.
+
+A real employer should ultimately be able to:
+
+sign up
+→ create their company
+→ create and publish an interview
+→ invite a real candidate
+→ candidate receives a real Resend email
+→ candidate records multiple real video responses
+→ uploads succeed
+→ candidate can resume an interrupted interview
+→ submits
+→ responses are transcribed
+→ AI insights are generated
+→ employer is notified
+→ employer watches the interview
+→ reads the transcript/insights
+→ makes a human review decision
+→ plan usage is tracked correctly.
+
+That working loop matters more than creating dozens of superficial pages.
+
+WORKING APPROACH
+
+First inspect the repository and understand what currently exists.
+
+Then reason about what should be preserved, rewritten or removed.
+
+Form a coherent architecture around the product described above.
+
+You have freedom to make sensible engineering and UX decisions where this brief does not dictate an exact implementation.
+
+Do not ask me to make decisions that can reasonably be inferred from the product.
+
+If something genuinely affects the fundamental product, cost, security or deployment and cannot safely be inferred, flag it.
+
+Otherwise, use judgment and build Croonbox as a coherent production SaaS, not as a generated prototype.
+
+Before you begin major implementation, tell me:
+
+1. what you found in the existing repository,
+2. what you believe can be retained,
+3. the architecture you intend to use,
+4. the core domain/data model you intend to build around,
+5. how you intend to approach the end-to-end product loop.
+
+Do not start by generating dozens of pages.
+Understand the system first.
