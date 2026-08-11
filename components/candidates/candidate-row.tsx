@@ -16,20 +16,22 @@ type Row = {
 
 const statusLabel: Record<string, string> = {
   not_started: "Invited",
-  in_progress: "Started",
+  in_progress: "In progress",
   completed: "Completed",
   processing: "Processing",
   ready_for_review: "Ready for Review",
   reviewed: "Reviewed",
+  failed: "Failed",
 };
 
-const statusVariant: Record<string, "outline" | "default" | "success" | "warning" | "secondary"> = {
+const statusVariant: Record<string, "outline" | "default" | "success" | "warning" | "secondary" | "destructive"> = {
   not_started: "outline",
   in_progress: "default",
   completed: "secondary",
   processing: "warning",
   ready_for_review: "success",
   reviewed: "secondary",
+  failed: "destructive",
 };
 
 function initials(name: string) {

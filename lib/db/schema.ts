@@ -26,7 +26,14 @@ export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "incomplete",
 ]);
 
-export const jobStatusEnum = pgEnum("job_status", ["draft", "published", "archived"]);
+export const jobStatusEnum = pgEnum("job_status", ["draft", "published", "closed", "archived"]);
+
+export const employmentTypeEnum = pgEnum("employment_type", [
+  "full_time",
+  "part_time",
+  "contract",
+  "internship",
+]);
 
 export const invitationStatusEnum = pgEnum("invitation_status", [
   "pending",
@@ -35,6 +42,8 @@ export const invitationStatusEnum = pgEnum("invitation_status", [
   "revoked",
 ]);
 
+// A live interview session's lifecycle. "failed" covers dropped calls / connection errors —
+// a live conversation can't be resumed mid-call the way async pre-recorded video could.
 export const sessionStatusEnum = pgEnum("interview_session_status", [
   "not_started",
   "in_progress",
@@ -42,23 +51,13 @@ export const sessionStatusEnum = pgEnum("interview_session_status", [
   "processing",
   "ready_for_review",
   "reviewed",
+  "failed",
 ]);
 
 export const decisionEnum = pgEnum("decision", ["none", "shortlisted", "maybe", "rejected"]);
 
-export const responseStatusEnum = pgEnum("response_status", [
-  "recorded",
-  "uploaded",
-  "upload_failed",
-  "transcribing",
-  "transcribed",
-  "transcription_failed",
-]);
-
 export const processingJobTypeEnum = pgEnum("processing_job_type", [
-  "transcribe_response",
-  "generate_response_insights",
-  "generate_session_insights",
+  "generate_ai_report",
   "notify_employer_ready",
 ]);
 
@@ -72,7 +71,7 @@ export const processingJobStatusEnum = pgEnum("processing_job_status", [
 export const emailTypeEnum = pgEnum("email_type", [
   "candidate_invitation",
   "candidate_reminder",
-  "employer_verification",
+  "employer_welcome",
   "password_reset",
   "employer_review_ready",
   "team_invitation",
@@ -162,7 +161,7 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// --- Jobs & questions ---
+// --- Jobs & AI interview configs ---
 
 export const jobs = pgTable(
   "jobs",
@@ -172,11 +171,22 @@ export const jobs = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    department: text("department"),
+    location: text("location"),
+    employmentType: employmentTypeEnum("employment_type"),
+    // Free-text seniority label (e.g. "Entry-level", "Senior") — deliberately not an enum,
+    // roles vary too much across employers to force a fixed ladder.
+    seniorityLevel: text("seniority_level"),
+    // Job description / requirements / interview context the employer provides — this is
+    // what the AI uses to generate the interview structure, not shown to candidates verbatim.
+    context: text("context"),
+    // What the candidate actually reads on the intro screen before starting.
     candidateInstructions: text("candidate_instructions"),
+    cameraRequired: boolean("camera_required").notNull().default(true),
     status: jobStatusEnum("status").notNull().default("draft"),
-    defaultPrepSeconds: integer("default_prep_seconds").notNull().default(60),
-    defaultResponseSeconds: integer("default_response_seconds").notNull().default(120),
-    retakesAllowed: integer("retakes_allowed").notNull().default(1),
+    // Hard ceiling on live interview length — a technical backstop alongside the prompt-level
+    // instruction to keep the AI interview short and focused.
+    maxDurationMinutes: integer("max_duration_minutes").notNull().default(20),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -186,22 +196,34 @@ export const jobs = pgTable(
   (t) => [index("jobs_org_status_idx").on(t.organizationId, t.status)],
 );
 
-export const interviewQuestions = pgTable(
-  "interview_questions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    jobId: uuid("job_id")
-      .notNull()
-      .references(() => jobs.id, { onDelete: "cascade" }),
-    orderIndex: integer("order_index").notNull(),
-    prompt: text("prompt").notNull(),
-    prepSeconds: integer("prep_seconds"),
-    responseSeconds: integer("response_seconds"),
-    evaluationGuidance: text("evaluation_guidance"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [uniqueIndex("questions_job_order_unique").on(t.jobId, t.orderIndex)],
-);
+type InterviewQuestionPlan = {
+  topic: string;
+  prompt: string;
+  followUpGuidance?: string;
+};
+
+// The AI-generated interview structure for a job. One row per job, overwritten on regenerate —
+// "reshuffle" is a fresh generation, not a version history.
+export const aiInterviewConfigs = pgTable("ai_interview_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobId: uuid("job_id")
+    .notNull()
+    .unique()
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  interviewerRole: text("interviewer_role").notNull(),
+  focusAreas: jsonb("focus_areas").$type<string[]>().notNull().default([]),
+  questions: jsonb("questions").$type<InterviewQuestionPlan[]>().notNull().default([]),
+  tone: text("tone").notNull(),
+  openingLine: text("opening_line").notNull(),
+  closingLine: text("closing_line").notNull(),
+  followUpGuidance: text("follow_up_guidance").notNull(),
+  avoidList: jsonb("avoid_list").$type<string[]>().notNull().default([]),
+  // The optional note the employer typed the last time they regenerated ("more scenario-based", etc).
+  guidanceNote: text("guidance_note"),
+  model: text("model").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // --- Candidates & invitations ---
 
@@ -215,6 +237,9 @@ export const candidates = pgTable(
     email: text("email").notNull(),
     name: text("name").notNull(),
     phone: text("phone"),
+    // A synthetic identity used by "Preview Interview" so employers can test the live candidate
+    // flow end-to-end. Excluded from every candidate-facing list, count, and usage metric.
+    isPreview: boolean("is_preview").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("candidates_org_email_unique").on(t.organizationId, t.email)],
@@ -242,7 +267,7 @@ export const candidateInvitations = pgTable(
   ],
 );
 
-// --- Interview sessions & responses ---
+// --- Live interview sessions ---
 
 export const interviewSessions = pgTable("interview_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -251,8 +276,11 @@ export const interviewSessions = pgTable("interview_sessions", {
     .unique()
     .references(() => candidateInvitations.id, { onDelete: "cascade" }),
   status: sessionStatusEnum("status").notNull().default("not_started"),
+  // Correlates back to the ElevenLabs conversation for transcript/webhook lookups.
+  elevenLabsConversationId: text("elevenlabs_conversation_id"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
   decision: decisionEnum("decision").notNull().default("none"),
   decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
@@ -260,8 +288,14 @@ export const interviewSessions = pgTable("interview_sessions", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const videoAssets = pgTable("video_assets", {
+// One recording per session — the candidate's webcam video captured client-side alongside
+// the live voice conversation.
+export const recordings = pgTable("recordings", {
   id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .unique()
+    .references(() => interviewSessions.id, { onDelete: "cascade" }),
   storagePath: text("storage_path").notNull(),
   mimeType: text("mime_type").notNull(),
   durationSeconds: integer("duration_seconds"),
@@ -269,62 +303,35 @@ export const videoAssets = pgTable("video_assets", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const candidateResponses = pgTable(
-  "candidate_responses",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    sessionId: uuid("session_id")
-      .notNull()
-      .references(() => interviewSessions.id, { onDelete: "cascade" }),
-    questionId: uuid("question_id")
-      .notNull()
-      .references(() => interviewQuestions.id, { onDelete: "cascade" }),
-    videoAssetId: uuid("video_asset_id").references(() => videoAssets.id, {
-      onDelete: "set null",
-    }),
-    status: responseStatusEnum("status").notNull().default("recorded"),
-    retakeCount: integer("retake_count").notNull().default(0),
-    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [uniqueIndex("responses_session_question_unique").on(t.sessionId, t.questionId)],
-);
+type TranscriptTurn = {
+  role: "agent" | "candidate";
+  text: string;
+};
 
+// One full-conversation transcript per session (not per question).
 export const transcripts = pgTable("transcripts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  responseId: uuid("response_id")
-    .notNull()
-    .unique()
-    .references(() => candidateResponses.id, { onDelete: "cascade" }),
-  text: text("text").notNull(),
-  provider: text("provider").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-// Per-response qualitative AI insight (never numeric scores).
-export const responseInsights = pgTable("response_insights", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  responseId: uuid("response_id")
-    .notNull()
-    .unique()
-    .references(() => candidateResponses.id, { onDelete: "cascade" }),
-  summary: text("summary").notNull(),
-  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
-  strongSignals: jsonb("strong_signals").$type<string[]>().notNull().default([]),
-  areasToReview: jsonb("areas_to_review").$type<string[]>().notNull().default([]),
-  model: text("model").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-// Whole-interview qualitative AI summary.
-export const sessionInsights = pgTable("session_insights", {
   id: uuid("id").primaryKey().defaultRandom(),
   sessionId: uuid("session_id")
     .notNull()
     .unique()
     .references(() => interviewSessions.id, { onDelete: "cascade" }),
-  overallSummary: text("overall_summary").notNull(),
+  text: text("text").notNull(),
+  turns: jsonb("turns").$type<TranscriptTurn[]>(),
+  provider: text("provider").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// The qualitative AI interview report — deliberately no numeric scores anywhere in this shape.
+export const aiReports = pgTable("ai_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .unique()
+    .references(() => interviewSessions.id, { onDelete: "cascade" }),
+  summary: text("summary").notNull(),
   relevantExperience: jsonb("relevant_experience").$type<string[]>().notNull().default([]),
-  areasToExplore: jsonb("areas_to_explore").$type<string[]>().notNull().default([]),
+  strongSignals: jsonb("strong_signals").$type<string[]>().notNull().default([]),
+  areasToReview: jsonb("areas_to_review").$type<string[]>().notNull().default([]),
   suggestedFollowUps: jsonb("suggested_follow_ups").$type<string[]>().notNull().default([]),
   model: text("model").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -359,8 +366,8 @@ export const subscriptions = pgTable("subscriptions", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const usageCounters = pgTable(
-  "usage_counters",
+export const usageRecords = pgTable(
+  "usage_records",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: uuid("organization_id")

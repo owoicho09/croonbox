@@ -15,15 +15,25 @@ const STATUS_OPTIONS = [
   { value: "processing", label: "Processing" },
   { value: "ready_for_review", label: "Ready for Review" },
   { value: "reviewed", label: "Reviewed" },
+  { value: "failed", label: "Failed" },
+];
+
+const DECISION_OPTIONS = [
+  { value: "", label: "All decisions" },
+  { value: "shortlisted", label: "Shortlisted" },
+  { value: "maybe", label: "Maybe" },
+  { value: "rejected", label: "Rejected" },
 ];
 
 export function CandidateFilterBar({
   search,
   status,
+  decision,
   reviewQueue,
 }: {
   search: string;
   status: string;
+  decision: string;
   reviewQueue: boolean;
 }) {
   const router = useRouter();
@@ -77,17 +87,29 @@ export function CandidateFilterBar({
         ))}
       </select>
 
+      <select
+        value={decision}
+        onChange={(e) => updateParams({ decision: e.target.value || undefined, reviewQueue: undefined })}
+        className="h-10 rounded-lg border border-input bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {DECISION_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+
       <Button
         type="button"
         variant={reviewQueue ? "default" : "outline"}
         size="sm"
         className={cn("w-auto", reviewQueue && "shrink-0")}
-        onClick={() => updateParams({ reviewQueue: reviewQueue ? undefined : "1", status: undefined })}
+        onClick={() => updateParams({ reviewQueue: reviewQueue ? undefined : "1", status: undefined, decision: undefined })}
       >
         <Sparkles className="h-4 w-4" /> My Review Queue
       </Button>
 
-      {(search || status || reviewQueue) && (
+      {(search || status || decision || reviewQueue) && (
         <Button
           type="button"
           variant="ghost"

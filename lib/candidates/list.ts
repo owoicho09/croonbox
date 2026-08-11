@@ -6,11 +6,12 @@ import { jobs, candidateInvitations, candidates, interviewSessions } from "@/lib
 export type CandidateListFilters = {
   search?: string;
   status?: string;
+  decision?: string;
   reviewQueue?: boolean;
 };
 
 export async function listOrganizationCandidates(organizationId: string, filters: CandidateListFilters) {
-  const conditions: SQL[] = [eq(jobs.organizationId, organizationId)];
+  const conditions: SQL[] = [eq(jobs.organizationId, organizationId), eq(candidates.isPreview, false)];
 
   if (filters.search) {
     const term = `%${filters.search}%`;
@@ -24,6 +25,10 @@ export async function listOrganizationCandidates(organizationId: string, filters
     conditions.push(eq(interviewSessions.decision, "none"));
   } else if (filters.status) {
     conditions.push(eq(interviewSessions.status, filters.status as (typeof interviewSessions.status.enumValues)[number]));
+  }
+
+  if (filters.decision) {
+    conditions.push(eq(interviewSessions.decision, filters.decision as (typeof interviewSessions.decision.enumValues)[number]));
   }
 
   return db

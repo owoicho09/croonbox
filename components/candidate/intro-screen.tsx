@@ -1,39 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Clock, ListChecks, Smartphone } from "lucide-react";
+import { Mic, MessageCircle, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { startInterviewAction } from "@/lib/actions/interview";
 
 export function IntroScreen({
-  token,
   jobTitle,
   companyName,
   candidateInstructions,
   questionCount,
   onContinue,
 }: {
-  token: string;
   jobTitle: string;
   companyName: string;
   candidateInstructions: string | null;
   questionCount: number;
   onContinue: () => void;
 }) {
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  function handleStart() {
-    startTransition(async () => {
-      try {
-        await startInterviewAction(token);
-        onContinue();
-      } catch {
-        setError("Something went wrong starting your interview. Please refresh and try again.");
-      }
-    });
-  }
-
   return (
     <div className="mx-auto max-w-md text-center">
       <p className="text-sm font-medium text-primary">{companyName}</p>
@@ -43,25 +25,24 @@ export function IntroScreen({
 
       <div className="mt-8 space-y-4 text-left">
         <div className="flex items-start gap-3">
-          <ListChecks className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <Mic className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <p className="text-sm text-foreground">
-            {questionCount} question{questionCount === 1 ? "" : "s"} — answer each with a short video.
+            You&apos;ll have a short live voice conversation with our AI interviewer — about
+            {questionCount > 0 ? ` ${questionCount} focused question${questionCount === 1 ? "" : "s"}` : " a few focused questions"}.
           </p>
         </div>
         <div className="flex items-start gap-3">
-          <Clock className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <p className="text-sm text-foreground">You&apos;ll get prep time before each question, then record your answer.</p>
+          <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <p className="text-sm text-foreground">Just talk naturally, like a real conversation. It&apos;ll ask follow-ups if it needs more detail.</p>
         </div>
         <div className="flex items-start gap-3">
           <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <p className="text-sm text-foreground">Works great on your phone. Find somewhere quiet with good lighting.</p>
+          <p className="text-sm text-foreground">Works great on your phone. Find somewhere quiet with good signal.</p>
         </div>
       </div>
 
-      {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-
-      <Button size="lg" className="mt-8 w-full" onClick={handleStart} disabled={isPending}>
-        {isPending ? "Loading…" : "Get Started"}
+      <Button size="lg" className="mt-8 w-full" onClick={onContinue}>
+        Get Started
       </Button>
     </div>
   );

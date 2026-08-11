@@ -1,18 +1,20 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   candidateInvitations,
+  candidates,
+  jobs,
+  organizations,
+  aiInterviewConfigs,
   interviewSessions,
-  interviewQuestions,
-  candidateResponses,
-  videoAssets,
-  processingJobs,
+  recordings,
 } from "@/lib/db/schema";
 import { hashToken } from "@/lib/auth/tokens";
 import { createSignedUploadUrl } from "@/lib/storage";
+import { getSignedConversationUrl, buildInterviewDynamicVariables } from "@/lib/elevenlabs";
 
 async function resolveSession(token: string) {
   const tokenHash = hashToken(token);
@@ -34,105 +36,90 @@ async function resolveSession(token: string) {
   return { invitation, session };
 }
 
-export async function startInterviewAction(token: string) {
+export async function startLiveInterviewAction(token: string) {
   const { invitation, session } = await resolveSession(token);
 
-  if (session.status === "not_started") {
-    await db.update(interviewSessions).set({ status: "in_progress", startedAt: new Date() }).where(eq(interviewSessions.id, session.id));
+  const [row] = await db
+    .select({ candidate: candidates, job: jobs, organizationName: organizations.name, config: aiInterviewConfigs })
+    .from(candidates)
+    .innerJoin(jobs, eq(jobs.id, invitation.jobId))
+    .innerJoin(organizations, eq(organizations.id, jobs.organizationId))
+    .innerJoin(aiInterviewConfigs, eq(aiInterviewConfigs.jobId, jobs.id))
+    .where(eq(candidates.id, invitation.candidateId))
+    .limit(1);
+
+  if (!row) throw new Error("This interview isn't ready yet.");
+
+  if (session.status === "not_started" || session.status === "failed") {
+    await db
+      .update(interviewSessions)
+      .set({ status: "in_progress", startedAt: new Date(), failureReason: null })
+      .where(eq(interviewSessions.id, session.id));
   }
   if (invitation.status === "pending") {
     await db.update(candidateInvitations).set({ status: "opened" }).where(eq(candidateInvitations.id, invitation.id));
   }
 
-  return { ok: true };
-}
-
-export async function requestUploadTicketAction(token: string, questionId: string, mimeType: string) {
-  const { session } = await resolveSession(token);
-
-  const [question] = await db
-    .select({ id: interviewQuestions.id })
-    .from(interviewQuestions)
-    .where(eq(interviewQuestions.id, questionId))
-    .limit(1);
-  if (!question) throw new Error("Question not found.");
-
-  const extension = mimeType.includes("mp4") ? "mp4" : "webm";
-  const path = `${session.id}/${questionId}/${randomUUID()}.${extension}`;
-
-  const ticket = await createSignedUploadUrl(path);
-  return ticket;
-}
-
-export async function saveResponseAction(params: {
-  token: string;
-  questionId: string;
-  storagePath: string;
-  mimeType: string;
-  durationSeconds: number;
-  sizeBytes: number;
-}) {
-  const { token, questionId, storagePath, mimeType, durationSeconds, sizeBytes } = params;
-  const { session } = await resolveSession(token);
-
-  const [asset] = await db
-    .insert(videoAssets)
-    .values({ storagePath, mimeType, durationSeconds, sizeBytes })
-    .returning({ id: videoAssets.id });
-
-  const [existing] = await db
-    .select()
-    .from(candidateResponses)
-    .where(and(eq(candidateResponses.sessionId, session.id), eq(candidateResponses.questionId, questionId)))
-    .limit(1);
-
-  let responseId: string;
-  if (existing) {
-    await db
-      .update(candidateResponses)
-      .set({
-        videoAssetId: asset.id,
-        status: "uploaded",
-        retakeCount: existing.retakeCount + 1,
-        recordedAt: new Date(),
-      })
-      .where(eq(candidateResponses.id, existing.id));
-    responseId = existing.id;
-  } else {
-    const [created] = await db
-      .insert(candidateResponses)
-      .values({ sessionId: session.id, questionId, videoAssetId: asset.id, status: "uploaded" })
-      .returning({ id: candidateResponses.id });
-    responseId = created.id;
-  }
-
-  await db.insert(processingJobs).values({
-    type: "transcribe_response",
-    payload: { responseId },
+  const signedUrl = await getSignedConversationUrl();
+  const dynamicVariables = buildInterviewDynamicVariables({
+    jobTitle: row.job.title,
+    companyName: row.organizationName,
+    candidateName: row.candidate.name,
+    interviewerRole: row.config.interviewerRole,
+    focusAreas: row.config.focusAreas,
+    questions: row.config.questions,
+    tone: row.config.tone,
+    openingLine: row.config.openingLine,
+    closingLine: row.config.closingLine,
+    followUpGuidance: row.config.followUpGuidance,
+    avoidList: row.config.avoidList,
+    maxDurationMinutes: row.job.maxDurationMinutes,
   });
 
-  return { ok: true };
+  return { signedUrl, dynamicVariables };
 }
 
-export async function completeInterviewAction(token: string) {
-  const { session, invitation } = await resolveSession(token);
+export async function requestRecordingUploadTicketAction(token: string, mimeType: string) {
+  const { session } = await resolveSession(token);
+  const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+  const path = `${session.id}/recording-${randomUUID()}.${extension}`;
+  return createSignedUploadUrl(path);
+}
 
-  const questions = await db
-    .select({ id: interviewQuestions.id })
-    .from(interviewQuestions)
-    .where(eq(interviewQuestions.jobId, invitation.jobId));
+export async function completeInterviewAction(params: {
+  token: string;
+  conversationId: string;
+  storagePath?: string;
+  mimeType?: string;
+  durationSeconds?: number;
+  sizeBytes?: number;
+}) {
+  const { token, conversationId, storagePath, mimeType, durationSeconds, sizeBytes } = params;
+  const { session } = await resolveSession(token);
 
-  const responses = await db.select().from(candidateResponses).where(eq(candidateResponses.sessionId, session.id));
-  const answeredIds = new Set(responses.map((r) => r.questionId));
-  const missing = questions.filter((q) => !answeredIds.has(q.id));
-  if (missing.length > 0) {
-    throw new Error("Please answer every question before submitting.");
+  if (storagePath && mimeType) {
+    await db
+      .insert(recordings)
+      .values({ sessionId: session.id, storagePath, mimeType, durationSeconds, sizeBytes })
+      .onConflictDoUpdate({
+        target: recordings.sessionId,
+        set: { storagePath, mimeType, durationSeconds, sizeBytes },
+      });
   }
 
   await db
     .update(interviewSessions)
-    .set({ status: "processing", completedAt: new Date() })
+    .set({ status: "processing", completedAt: new Date(), elevenLabsConversationId: conversationId, updatedAt: new Date() })
     .where(eq(interviewSessions.id, session.id));
 
+  return { ok: true };
+}
+
+export async function failInterviewAction(token: string, reason: string) {
+  const { session } = await resolveSession(token);
+  await db
+    .update(interviewSessions)
+    .set({ status: "failed", failureReason: reason, completedAt: new Date(), updatedAt: new Date() })
+    .where(eq(interviewSessions.id, session.id));
   return { ok: true };
 }

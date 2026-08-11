@@ -12,7 +12,7 @@ export default async function TeamInvitePage({ params }: PageProps<"/team-invite
 
   return (
     <div className="flex min-h-full flex-col bg-background">
-      <header className="px-6 py-6">
+      <header className="px-4 py-6 sm:px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold text-foreground">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Video className="h-4 w-4" />
@@ -20,7 +20,7 @@ export default async function TeamInvitePage({ params }: PageProps<"/team-invite
           Croonbox
         </Link>
       </header>
-      <main className="flex flex-1 items-center justify-center px-6 pb-16">
+      <main className="flex flex-1 items-center justify-center px-4 pb-16 sm:px-6">
         <div className="w-full max-w-sm text-center">
           <p className="text-sm text-destructive">{result?.error}</p>
           <Button asChild className="mt-6">

@@ -43,10 +43,10 @@ export function candidateInvitationEmail(params: {
   const { candidateName, jobTitle, companyName, interviewUrl, deadlineText } = params;
   return layout(`
     <p>Hi ${candidateName},</p>
-    <p><strong>${companyName}</strong> has invited you to complete a short video interview for the
+    <p><strong>${companyName}</strong> has invited you to a live AI interview for the
     <strong>${jobTitle}</strong> role.</p>
-    <p>You can complete it on your own time, from your phone or computer. It only takes a few
-    minutes to get set up.</p>
+    <p>When you&rsquo;re ready, click below and you&rsquo;ll have a short live voice conversation with
+    our AI interviewer — no scheduling required, just find a quiet spot with good signal.</p>
     ${deadlineText ? `<p style="color:#64748b;font-size:13px;">Please complete it by ${deadlineText}.</p>` : ""}
     ${button(interviewUrl, "Start Interview")}
     <p style="margin-top:24px;color:#64748b;font-size:13px;">This link is unique to you — please don&rsquo;t share it.</p>
@@ -73,6 +73,17 @@ export function employerReviewReadyEmail(params: {
     <p><strong>${params.candidateName}</strong>&rsquo;s interview for <strong>${params.jobTitle}</strong>
     has finished processing and is ready for review.</p>
     ${button(params.reviewUrl, "Review Interview")}
+  `);
+}
+
+export function welcomeEmail(params: { name: string; companyName: string; jobsUrl: string }) {
+  return layout(`
+    <p>Hi ${params.name.split(" ")[0]},</p>
+    <p>Welcome to Croonbox — <strong>${params.companyName}</strong>&rsquo;s workspace is ready.</p>
+    <p>Create a job, add the description and context, and Croonbox will prepare a live AI interviewer
+    for it automatically. From there you invite candidates, and once they complete their interview
+    you&rsquo;ll get the recording, transcript, and an AI-generated report to review.</p>
+    ${button(params.jobsUrl, "Create your first job")}
   `);
 }
 

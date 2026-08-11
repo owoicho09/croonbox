@@ -29,7 +29,7 @@ export default async function AdminOrganizationsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-foreground">Organizations ({rows.length})</h1>
+      <h1 className="text-2xl font-semibold text-foreground">Companies ({rows.length})</h1>
 
       <Card>
         <CardContent className="divide-y divide-border py-0">

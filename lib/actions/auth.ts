@@ -10,7 +10,7 @@ import { generateToken, hashToken } from "@/lib/auth/tokens";
 import { slugWithSuffix } from "@/lib/org/slug";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validation/auth";
 import { sendEmail } from "@/lib/email";
-import { passwordResetEmail } from "@/lib/email/templates";
+import { passwordResetEmail, welcomeEmail } from "@/lib/email/templates";
 
 export type ActionState = { error?: string; fieldErrors?: Record<string, string> } | undefined;
 
@@ -43,7 +43,7 @@ export async function signupAction(_prev: ActionState, formData: FormData): Prom
 
   const passwordHash = await hashPassword(password);
 
-  const userId = await db.transaction(async (tx) => {
+  const { userId, organizationId } = await db.transaction(async (tx) => {
     const [org] = await tx
       .insert(organizations)
       .values({ name: companyName, slug: slugWithSuffix(companyName) })
@@ -57,7 +57,15 @@ export async function signupAction(_prev: ActionState, formData: FormData): Prom
     await tx.insert(memberships).values({ organizationId: org.id, userId: user.id, role: "owner" });
     await tx.insert(subscriptions).values({ organizationId: org.id, plan: "starter", status: "active" });
 
-    return user.id;
+    return { userId: user.id, organizationId: org.id };
+  });
+
+  await sendEmail({
+    organizationId,
+    type: "employer_welcome",
+    to: email,
+    subject: "Welcome to Croonbox",
+    html: welcomeEmail({ name, companyName, jobsUrl: `${process.env.NEXT_PUBLIC_APP_URL}/jobs/new` }),
   });
 
   await createSession(userId);

@@ -1,20 +1,41 @@
 "use client";
 
-import { useActionState } from "react";
-import { publishJobAction, archiveJobAction } from "@/lib/actions/jobs";
+import { useActionState, useTransition } from "react";
+import { toast } from "sonner";
+import { publishJobAction, archiveJobAction, closeJobAction } from "@/lib/actions/jobs";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useActionToast } from "@/lib/hooks/use-action-toast";
 import type { ActionState } from "@/lib/actions/auth";
 
 const statusVariant = {
   draft: "outline",
   published: "success",
+  closed: "secondary",
   archived: "secondary",
 } as const;
 
-export function PublishBar({ jobId, status }: { jobId: string; status: "draft" | "published" | "archived" }) {
+export function PublishBar({ jobId, status }: { jobId: string; status: "draft" | "published" | "closed" | "archived" }) {
   const publishAction = publishJobAction.bind(null, jobId);
   const [publishState, publishFormAction] = useActionState<ActionState, FormData>(publishAction, undefined);
+  useActionToast(publishState, "Job published.");
+
+  const [isPending, startTransition] = useTransition();
+
+  function handleClose() {
+    startTransition(async () => {
+      await closeJobAction(jobId);
+      toast.success("Job closed to new invitations.");
+    });
+  }
+
+  function handleArchive() {
+    startTransition(async () => {
+      await archiveJobAction(jobId);
+      toast.success("Job archived.");
+    });
+  }
 
   return (
     <div className="rounded-xl border border-border bg-card px-5 py-4">
@@ -33,11 +54,19 @@ export function PublishBar({ jobId, status }: { jobId: string; status: "draft" |
             </form>
           )}
           {status === "published" && (
-            <form action={archiveJobAction.bind(null, jobId)}>
-              <SubmitButton className="w-auto" variant="outline">
+            <>
+              <Button type="button" variant="outline" className="w-auto" disabled={isPending} onClick={handleClose}>
+                Close job
+              </Button>
+              <Button type="button" variant="outline" className="w-auto" disabled={isPending} onClick={handleArchive}>
                 Archive job
-              </SubmitButton>
-            </form>
+              </Button>
+            </>
+          )}
+          {status === "closed" && (
+            <Button type="button" variant="outline" className="w-auto" disabled={isPending} onClick={handleArchive}>
+              Archive job
+            </Button>
           )}
         </div>
       </div>

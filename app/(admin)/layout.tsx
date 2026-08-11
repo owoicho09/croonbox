@@ -4,9 +4,14 @@ import { requirePlatformAdmin } from "@/lib/org/admin";
 
 const navItems = [
   { href: "/admin", label: "Overview" },
-  { href: "/admin/organizations", label: "Organizations" },
+  { href: "/admin/organizations", label: "Companies" },
+  { href: "/admin/users", label: "Users" },
+  { href: "/admin/jobs", label: "Jobs" },
+  { href: "/admin/interviews", label: "Interviews" },
+  { href: "/admin/subscriptions", label: "Subscriptions" },
   { href: "/admin/processing", label: "Processing" },
-  { href: "/admin/emails", label: "Emails" },
+  { href: "/admin/emails", label: "Email Logs" },
+  { href: "/admin/audit", label: "Audit Log" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

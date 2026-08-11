@@ -1,77 +1,39 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { IntroScreen } from "@/components/candidate/intro-screen";
 import { DeviceCheck } from "@/components/candidate/device-check";
-import { QuestionRecorder } from "@/components/candidate/question-recorder";
+import { LiveInterview } from "@/components/candidate/live-interview";
 import { CompleteScreen } from "@/components/candidate/complete-screen";
-import { completeInterviewAction } from "@/lib/actions/interview";
 
-type Question = {
-  id: string;
-  prompt: string;
-  prepSeconds: number | null;
-  responseSeconds: number | null;
-};
-
-type Phase = "intro" | "device-check" | "question" | "submitting" | "complete";
+type Phase = "intro" | "device-check" | "live" | "complete";
 
 export function InterviewFlow({
   token,
   jobTitle,
   companyName,
   candidateInstructions,
-  defaultPrepSeconds,
-  defaultResponseSeconds,
-  retakesAllowed,
-  questions,
-  answeredQuestionIds,
+  questionCount,
   alreadyFinished,
 }: {
   token: string;
   jobTitle: string;
   companyName: string;
   candidateInstructions: string | null;
-  defaultPrepSeconds: number;
-  defaultResponseSeconds: number;
-  retakesAllowed: number;
-  questions: Question[];
-  answeredQuestionIds: string[];
+  questionCount: number;
   alreadyFinished: boolean;
 }) {
-  const firstUnansweredIndex = useMemo(() => {
-    const answered = new Set(answeredQuestionIds);
-    const idx = questions.findIndex((q) => !answered.has(q.id));
-    return idx === -1 ? questions.length : idx;
-  }, [questions, answeredQuestionIds]);
-
   const [phase, setPhase] = useState<Phase>(alreadyFinished ? "complete" : "intro");
-  const [questionIndex, setQuestionIndex] = useState(firstUnansweredIndex);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  async function handleQuestionSubmitted() {
-    const nextIndex = questionIndex + 1;
-    if (nextIndex >= questions.length) {
-      setPhase("submitting");
-      try {
-        await completeInterviewAction(token);
-      } finally {
-        setPhase("complete");
-      }
-      return;
-    }
-    setQuestionIndex(nextIndex);
-  }
-
   return (
-    <div className="flex flex-1 items-center justify-center px-6 py-12">
+    <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
       {phase === "intro" && (
         <IntroScreen
-          token={token}
           jobTitle={jobTitle}
           companyName={companyName}
           candidateInstructions={candidateInstructions}
-          questionCount={questions.length}
+          questionCount={questionCount}
           onContinue={() => setPhase("device-check")}
         />
       )}
@@ -80,27 +42,20 @@ export function InterviewFlow({
         <DeviceCheck
           onReady={(s) => {
             setStream(s);
-            setPhase("question");
+            setPhase("live");
           }}
         />
       )}
 
-      {phase === "question" && stream && questions[questionIndex] && (
-        <QuestionRecorder
-          key={questions[questionIndex].id}
+      {phase === "live" && stream && (
+        <LiveInterview
           token={token}
-          question={questions[questionIndex]}
-          questionNumber={questionIndex + 1}
-          totalQuestions={questions.length}
-          defaultPrepSeconds={defaultPrepSeconds}
-          defaultResponseSeconds={defaultResponseSeconds}
-          retakesAllowed={retakesAllowed}
           stream={stream}
-          onSubmitted={handleQuestionSubmitted}
+          jobTitle={jobTitle}
+          companyName={companyName}
+          onComplete={() => setPhase("complete")}
         />
       )}
-
-      {phase === "submitting" && <p className="text-sm text-muted-foreground">Submitting your interview…</p>}
 
       {phase === "complete" && <CompleteScreen companyName={companyName} />}
     </div>

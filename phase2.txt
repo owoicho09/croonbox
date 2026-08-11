@@ -1,0 +1,894 @@
+We need to correct the Croonbox build properly.
+
+The current implementation is not acceptable because it feels like a thin MVP shell and not the actual product we designed. Do not continue polishing the current weak direction. Rebuild/refactor the product experience around the full Croonbox system described below.
+
+This is not just a UI task and not just a backend task. Croonbox must become a real live AI interview SaaS with three strong sides:
+
+1. Platform Admin
+2. Employer Workspace
+3. Candidate Live Interview Experience
+
+The client already had a richer prototype visually, so the final product must not feel bare. Claude cannot see the prototype unless screenshots are provided, so follow this concrete visual/product direction.
+
+VISUAL DIRECTION
+
+Use this UI language across the whole system:
+
+- dark navy sidebar on desktop
+- Croonbox logo/brand at top of sidebar
+- light grey/blue main workspace background
+- white rounded cards
+- thin subtle borders
+- royal blue primary buttons
+- soft blue active states
+- clean status pills
+- clear topbar with page title, search, notifications/user/avatar
+- professional SaaS dashboard layout
+- strong onboarding screens
+- polished loading states
+- clean admin control center
+- mobile-responsive layouts
+- tables should become usable cards/stacked views on mobile
+- candidate interview screens must be especially good on mobile
+
+Do not make it look like a random new template.
+
+Do not use:
+- purple-heavy theme
+- neon/futuristic UI
+- glassmorphism everywhere
+- empty dashboards
+- lazy metric cards only
+- dark main dashboard background
+- fake AI score widgets
+- fake AI rankings
+- bias detection widgets
+- scheduling/calendar-heavy flows as the core product
+
+The final product should feel like a serious AI hiring platform, not a generic CRUD dashboard.
+
+PRODUCT TRUTH
+
+Croonbox is a live AI interview platform for hiring teams.
+
+The employer does not manually build question after question.
+
+The employer creates a job, adds job description, role requirements and hiring context. Croonbox then uses AI to prepare the interview structure automatically.
+
+The candidate still takes the interview whenever they want, but once they begin, it is a live conversation with an AI interviewer.
+
+The soul of the product is:
+
+Employer creates job
+→ Croonbox generates AI interviewer plan
+→ employer previews/reshuffles/publishes
+→ employer invites candidate
+→ candidate opens secure link
+→ candidate completes live ElevenLabs interview
+→ session is recorded/transcribed
+→ AI report is generated
+→ employer reviews recording, transcript and report
+→ employer decides Shortlist / Maybe / Reject
+
+This core loop matters more than creating many superficial pages.
+
+TECH STACK
+
+Use:
+
+- Next.js App Router
+- Supabase Postgres as the database
+- Supabase Storage for recordings/media
+- Custom authentication, not Supabase Auth
+- Resend for transactional emails
+- Stripe for subscriptions/billing
+- Anthropic/Claude API for generating the AI interview structure/preview from job context
+- ElevenLabs for the live AI interviewer
+- OpenAI/Claude where appropriate for transcript/report generation
+
+All service keys, model names, app URLs, bucket names, Stripe price IDs, webhook secrets and external config must come from environment variables.
+
+Do not hard-code environment-specific values.
+
+Relevant env categories:
+
+APP_URL
+SESSION_SECRET
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_RECORDINGS_BUCKET
+SUPABASE_MEDIA_BUCKET
+RESEND_API_KEY
+RESEND_FROM_EMAIL
+STRIPE_SECRET_KEY
+STRIPE_PUBLISHABLE_KEY
+STRIPE_WEBHOOK_SECRET
+STRIPE_PROFESSIONAL_PRICE_ID
+ANTHROPIC_API_KEY
+ANTHROPIC_MODEL
+ELEVENLABS_API_KEY
+ELEVENLABS_AGENT_ID
+ELEVENLABS_WEBHOOK_SECRET
+OPENAI_API_KEY if used for transcription/reporting
+
+The client has cPanel/domain hosting, but we have not inspected that environment yet. Keep the app deployment-portable. Do not make cPanel-specific assumptions.
+
+AUTHENTICATION
+
+Use custom auth.
+
+Do not use Supabase Auth.
+
+Implement:
+- signup
+- login
+- logout
+- password reset
+- secure password hashing
+- secure sessions/cookies
+- protected employer routes
+- protected admin routes
+- organization-aware access control
+
+Multi-tenancy matters. One company must never see another company’s data.
+
+USER TYPES
+
+Platform Admin:
+The Croonbox operator. Can view and manage the whole SaaS.
+
+Employer Owner:
+Creates company workspace, manages jobs, candidates, team, billing, reports and settings.
+
+Employer Team Member:
+Can collaborate on jobs, candidates, reviews and notes. Simple Owner/Member permissions are enough for now.
+
+Candidate:
+Does not create an account. Candidate uses secure interview link only.
+
+CORE DATA MODEL
+
+Reason around this model. Adjust as needed, but do not lose these concepts:
+
+organizations
+users
+organization_members
+team_invitations
+jobs
+ai_interview_configs
+candidates
+candidate_invitations
+interview_sessions
+recordings
+transcripts
+ai_reports
+candidate_reviews
+review_notes
+subscriptions
+usage_records
+email_logs
+activity_events
+processing_jobs
+
+Important relationships:
+
+An organization owns jobs, candidates, invitations, sessions, reports and reviews.
+
+A job contains the role details and generated AI interview configuration.
+
+A candidate identity is separate from an invitation/session so the same candidate can later be invited to another role.
+
+An interview session represents one candidate’s live AI interview attempt.
+
+ELEVENLABS AGENT VARIABLES
+
+We already configured/planned the ElevenLabs agent around these dynamic variables. The app must pass these variables when starting the live conversation:
+
+{{company_name}}
+{{candidate_name}}
+{{job_title}}
+{{max_duration_minutes}}
+{{interviewer_role}}
+{{tone}}
+{{opening_line}}
+{{questions}}
+{{follow_up_guidance}}
+{{avoid_list}}
+{{closing_line}}
+
+The ElevenLabs agent prompt expects those variables.
+
+Croonbox must generate and store these values from the job context and AI interview plan.
+
+ElevenLabs is the live voice layer. Croonbox still owns:
+- job context
+- generated interview structure
+- candidate identity
+- invite token
+- interview session status
+- recording
+- transcript
+- AI report
+- employer review
+- platform data
+
+LIVE AI INTERVIEW BEHAVIOR
+
+The interview must not be endless.
+
+This is a major distinction.
+
+The generated interview should usually have 4 to 6 main questions maximum.
+
+The AI interviewer should behave like a natural professional interviewer:
+- open the interview clearly
+- ask one question at a time
+- allow candidate to answer
+- ask one useful follow-up when answer is vague
+- stay within job context
+- avoid random unrelated topics
+- avoid protected/sensitive hiring questions
+- cover the planned interview structure
+- close naturally when planned questions are covered
+- never give hiring decision
+- never tell candidate whether they passed/failed
+- never score the candidate
+
+The AI should feel conversational and human, not like a rigid interrogation.
+
+JOB CREATION / AI INTERVIEW GENERATION
+
+This is one of the most important employer flows.
+
+The employer should create a job by entering:
+
+- job title
+- department
+- location
+- employment type
+- job description
+- role requirements
+- experience/seniority level if useful
+- interview context/instructions
+- estimated duration
+- deadline
+- camera required yes/no
+- candidate instructions
+
+After the employer provides the job context, they click something like:
+
+Generate AI Interview
+
+Then show a proper loading/preparation state. Do not leave the employer staring at an idle screen.
+
+Loading state should feel like:
+
+Preparing your AI interviewer…
+Understanding the role
+Extracting key requirements
+Building interview focus areas
+Preparing candidate conversation flow
+
+Then show a preview before saving/publishing.
+
+AI INTERVIEW PREVIEW
+
+The preview should show:
+
+AI Interviewer Role
+A short explanation of what role the AI interviewer will play for this job.
+
+Interview Focus Areas
+Bullet list of what the AI will assess.
+
+Generated Questions
+4 to 6 main questions maximum.
+
+Conversation Style
+Example: friendly, professional, structured, not robotic.
+
+Sample Opening
+The first thing the AI interviewer may say.
+
+Follow-up Guidance
+How the AI should probe vague answers.
+
+Avoid List
+Sensitive or irrelevant areas the AI must avoid.
+
+Closing Line
+How the AI should end the interview.
+
+This preview is not just decoration. It becomes the stored ai_interview_config that guides the ElevenLabs session.
+
+RESHUFFLE / REGENERATE
+
+Employer must be able to regenerate/reshuffle the AI interview structure if they do not like the first version.
+
+When regenerating, allow an optional note.
+
+Examples:
+“Make it more focused on customer support experience.”
+“Make it more scenario-based.”
+“Make it suitable for an entry-level candidate.”
+“Focus more on leadership and communication.”
+
+Regeneration must use:
+- original job description/context
+- previous interview plan if useful
+- employer’s optional note
+
+Then show the new preview.
+
+After preview:
+- Save Draft
+- Publish
+
+PUBLISH / INVITE FLOW
+
+A draft job should not accept candidates yet.
+
+Once published, employer can:
+- invite one candidate
+- paste multiple emails
+- upload CSV later if not built immediately
+- copy interview link where appropriate
+- preview interview
+
+Invitations use Resend.
+
+Candidate email should include:
+- company name
+- job title
+- short explanation
+- estimated duration
+- deadline if set
+- secure interview link
+- CTA: Start Interview
+
+Candidate does not sign up.
+
+EMPLOYER APP SHELL
+
+Sidebar:
+Dashboard
+Jobs
+Candidates
+Reports
+Team
+Billing
+Settings
+
+Platform Admin should be separate/admin-only, not mixed into normal employer navigation unless the logged-in user is admin.
+
+Topbar:
+page title
+search
+notification icon
+user/avatar/company menu
+
+EMPLOYER DASHBOARD
+
+Dashboard must be rich, not empty.
+
+Include:
+
+1. Welcome card
+- Welcome back, [name]
+- company name
+- short product status
+- CTA: Create Job / New AI Interview
+
+2. Metric cards
+- Active Jobs
+- Candidates Invited
+- Interviews Completed
+- Reports Ready / Awaiting Review
+
+No Avg Score.
+
+3. Pipeline section
+Show:
+Invited → Started → Completed → Report Ready → Reviewed / Shortlisted
+
+4. Open Jobs section
+Job cards/rows:
+- job title
+- department/location
+- status
+- invited candidates
+- completed interviews
+- reports ready
+- created date
+
+If empty, show a strong empty state:
+“Create your first job and let Croonbox prepare the AI interviewer from the job description.”
+
+5. Recent Activity
+Examples:
+- job created
+- AI interview generated
+- candidate invited
+- interview started
+- interview completed
+- report generated
+- candidate shortlisted
+
+6. Getting Started checklist when new
+- set up company
+- create first job
+- generate AI interviewer
+- invite candidate
+- review first report
+
+JOBS PAGE
+
+Should show all jobs with:
+
+- title
+- department/location
+- status
+- candidates invited
+- interviews completed
+- reports ready
+- created date
+- actions
+
+Statuses:
+Draft
+Published/Active
+Closed
+Archived
+
+Actions:
+Open
+Edit
+Duplicate if useful
+Invite Candidates
+Close/Archive
+
+JOB DETAIL PAGE
+
+This page should be strong.
+
+Header:
+- job title
+- department/location
+- status
+- Invite Candidates
+- Copy Link
+- Preview Interview
+
+Sections/tabs:
+
+Overview
+- role details
+- status
+- counts
+- recent activity
+
+AI Interviewer
+- generated interviewer role
+- focus areas
+- generated 4–6 questions
+- sample opening
+- follow-up guidance
+- avoid list
+- regenerate/edit context buttons
+
+Candidates
+- invited candidates table/list
+- status
+- report status
+- decision
+- actions
+
+Settings
+- job description
+- requirements
+- deadline
+- camera required
+- candidate instructions
+
+Candidate statuses:
+Invited
+Started
+Completed
+Processing Report
+Report Ready
+Reviewed
+
+Review outcomes:
+Shortlisted
+Maybe
+Rejected
+
+CANDIDATES PAGE
+
+Global candidates view across company.
+
+Fields:
+- candidate name
+- email
+- job
+- interview status
+- report status
+- review decision
+- invited date
+- completed date
+
+Filters:
+- job
+- status
+- report ready
+- awaiting review
+- shortlisted
+- maybe
+- rejected
+
+Search by candidate name/email.
+
+CANDIDATE INTERVIEW EXPERIENCE
+
+Route should be something like:
+
+/interview/[token]
+
+This side must be simple, polished and mobile-first.
+
+Candidate flow:
+
+1. Onboarding / Instructions Screen
+
+Show:
+- company logo/name
+- job title
+- estimated duration
+- deadline
+- what to expect
+- “You will complete a live AI interview”
+- explain that the AI interviewer will ask role-related questions
+- no candidate account required
+- CTA: Begin / Continue
+
+2. Camera/Microphone Check
+
+Show:
+- camera preview
+- microphone permission/check
+- browser/device support
+- clear error states
+- CTA: Everything looks good
+
+3. Live AI Interview Room
+
+This is a core screen.
+
+It should feel like a live interview call.
+
+Main area:
+- candidate camera feed as main focus
+
+Secondary area:
+- AI interviewer avatar/card in corner
+- animated speaking/listening state
+- voice wave/pulse effect
+- label like “AI Interviewer”
+
+Also show:
+- recording indicator
+- timer / elapsed time
+- job/company title
+- clear end/submit state
+
+Do not make this look like a normal form.
+
+Use ElevenLabs for the conversation.
+
+The session should start with the dynamic variables from the saved ai_interview_config and candidate/job data.
+
+4. Completion Screen
+
+After interview ends:
+- submit/save final session
+- show simple confirmation
+- “Your interview has been submitted. The hiring team will review your responses.”
+
+No candidate dashboard.
+
+INTERRUPTION / RECOVERY
+
+Handle reasonable interruption.
+
+If candidate returns to valid link:
+- show welcome back state
+- preserve interview session status where possible
+- prevent duplicate completed interviews
+- do not lose saved session/transcript/recording data
+
+CANDIDATE DETAIL PAGE — MONEY PAGE
+
+This page must feel premium and complete.
+
+When employer opens a candidate, show tabs or clear sections:
+
+Overview
+Recording
+Transcript
+AI Report
+Notes & Decision
+
+Overview:
+- candidate name
+- email
+- job
+- interview status
+- report status
+- decision status
+- completed date
+- quick summary if available
+
+Recording:
+- visible video/audio player
+- candidate recording should be easy to review
+- if video recording exists, show video
+- if audio-only fallback exists, show audio
+
+Transcript:
+- speaker-labelled transcript
+- AI Interviewer:
+- Candidate:
+- easy to scan
+- timestamp support if available, but not required
+
+AI Report:
+No scores.
+
+Sections:
+- Interview Summary
+- Relevant Experience
+- Strong Signals
+- Areas to Review
+- Suggested Human Follow-Up Questions
+
+Notes & Decision:
+- internal notes
+- Shortlist
+- Maybe
+- Reject
+- who reviewed
+- review timestamp
+
+This is the most important employer review screen.
+
+ADMIN SIDE
+
+Build a proper platform admin control center.
+
+It should not be a lazy list of users.
+
+Admin dashboard should include:
+- companies
+- users
+- jobs
+- interviews completed
+- reports generated
+- active subscriptions
+- failed sessions
+- failed reports
+- email volume
+- storage used
+- Stripe status
+
+Admin sections:
+Companies
+Users
+Jobs
+Interviews
+Subscriptions
+Processing
+Email Logs
+Audit Log
+
+Admin should help diagnose issues:
+- ElevenLabs session failed
+- recording failed
+- transcript missing
+- AI report failed
+- email invite failed
+- Stripe webhook failed
+
+REPORTS / ANALYTICS
+
+Employer Reports should be operational, not score-based.
+
+Show:
+- total invited
+- interviews started
+- interviews completed
+- reports ready
+- awaiting review
+- shortlisted/maybe/rejected
+- completion rate
+- interview trends
+- report readiness
+- review workload
+
+No AI score averages.
+
+TEAM
+
+Team page:
+- members
+- roles
+- pending invites
+- invite member
+- remove member
+
+Roles:
+Owner
+Member
+
+BILLING
+
+Stripe billing.
+
+Pricing:
+Starter — Free
+Professional — $49/month
+Enterprise — Custom
+
+Starter:
+- free
+- limited usage
+
+Professional:
+- live AI interviews / core paid usage depending on final plan
+- team collaboration
+- reports
+- priority support
+
+Billing page should show:
+- current plan
+- subscription status
+- usage
+- upgrade CTA
+- Stripe customer portal/manage billing when available
+
+Since ElevenLabs has cost, track live interview usage carefully.
+
+USAGE TRACKING
+
+Track:
+- interviews created
+- live interviews started
+- live interviews completed
+- reports generated
+- storage used
+- plan/subscription
+
+Do not scatter limit logic everywhere. Centralize entitlement/usage checks.
+
+EMAILS
+
+Use Resend for:
+- candidate invitation
+- candidate reminder if implemented
+- interview completed notification to employer
+- team invite
+- password reset
+- billing-related app notifications where needed
+
+Log email sends/failures.
+
+AI REPORT PRINCIPLES
+
+No fake precision.
+
+Do not say “candidate is 87% fit.”
+
+AI report must be grounded in transcript and job context.
+
+Use careful wording:
+“The candidate provided evidence of…”
+“The candidate did not clearly discuss…”
+“This may be worth reviewing further…”
+
+Do not infer protected traits or personality from voice/video/appearance.
+
+LANDING PAGE
+
+The landing page should match the new product truth.
+
+Croonbox is not just async recorded answers anymore.
+
+It is a live AI interview platform where hiring teams provide job context and Croonbox conducts structured AI interviews with candidates.
+
+Landing page should communicate:
+- create job
+- AI prepares interview
+- invite candidates
+- candidates complete live AI interview anytime
+- review recording/transcript/report
+- decide
+
+Do not use fake metrics/testimonials.
+Do not use AI ranking/scoring language.
+
+MOBILE RESPONSIVENESS
+
+This is not optional.
+
+Client complained about mobile responsiveness.
+
+Fix:
+- sidebar/drawer on mobile
+- dashboard stacking
+- tables becoming cards or scrollable
+- forms not overflowing
+- candidate interview screen works on mobile camera
+- candidate onboarding/device check/interview room are clean on mobile
+- candidate detail tabs usable on mobile
+
+QUALITY BAR
+
+Do not create a large number of empty routes just to say they exist.
+
+The main product loop must work:
+
+Employer signs up
+→ creates company
+→ creates job
+→ enters job description/context
+→ generates AI interview preview using Anthropic/Claude
+→ can regenerate with optional guidance
+→ saves/publishes
+→ invites candidate by email
+→ candidate opens secure link
+→ sees onboarding/instructions
+→ passes camera/mic check
+→ starts live ElevenLabs interview
+→ ElevenLabs receives correct dynamic variables
+→ AI conducts a finite 4–6 question interview naturally
+→ interview ends
+→ recording/transcript/session are saved
+→ AI report is generated
+→ employer opens candidate detail page
+→ sees recording, transcript, report, notes and decision
+→ employer marks Shortlist / Maybe / Reject
+
+That is the demo that must work.
+
+DO NOT LOSE TIME
+
+Do not spend hours only making backend schemas while the product still looks empty.
+
+Do not spend hours only making dashboards while the interview loop does not work.
+
+Work in order of value:
+
+1. Visual/app shell recovery so it looks like a serious Croonbox product.
+2. Job creation + AI interview generation/preview/regenerate.
+3. Candidate invite + secure link.
+4. Candidate onboarding/device check/live interview room.
+5. ElevenLabs live interview integration with dynamic variables.
+6. Recording/transcript/report saving.
+7. Candidate detail money page.
+8. Admin control center.
+9. Billing/usage/polish.
+
+Before making changes, inspect the current codebase and tell me:
+- what is already usable
+- what is too thin or wrong
+- which files/modules you will replace/refactor
+- how you will implement the core loop above
+
+Then proceed with focused implementation.
+
+Do not ask me generic product questions that are already answered here.
+
+The target is:
+
+Croonbox as a real live AI interview SaaS
+with rich admin/employer/candidate experiences
+and a working ElevenLabs interview loop.

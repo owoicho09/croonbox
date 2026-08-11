@@ -9,19 +9,23 @@ export default function NewJobPage() {
     <div className="mx-auto max-w-2xl">
       <h1 className="text-2xl font-semibold text-foreground">Create a job</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        You&apos;ll add interview questions and publish on the next step.
+        Describe the role — Croonbox will generate the interview structure on the next step.
       </p>
       <div className="mt-8">
         <JobDetailsForm
           action={createJobAction}
-          submitLabel="Continue to questions"
+          submitLabel="Continue"
           defaults={{
             title: "",
+            department: "",
+            location: "",
+            employmentType: "",
+            seniorityLevel: "",
+            context: "",
             candidateInstructions: "",
-            defaultPrepSeconds: 60,
-            defaultResponseSeconds: 120,
-            retakesAllowed: 1,
+            maxDurationMinutes: 20,
             deadlineAt: "",
+            cameraRequired: true,
           }}
         />
       </div>

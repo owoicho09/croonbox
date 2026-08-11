@@ -1,29 +1,25 @@
 import "server-only";
-import { sql, eq, asc } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   processingJobs,
-  candidateResponses,
-  interviewQuestions,
   interviewSessions,
   candidateInvitations,
   candidates,
-  videoAssets,
   jobs,
+  aiInterviewConfigs,
   transcripts,
-  responseInsights,
-  sessionInsights,
+  aiReports,
   users,
   memberships,
 } from "@/lib/db/schema";
-import { transcribeVideo } from "@/lib/ai/transcribe";
-import { generateResponseInsights, generateSessionInsights } from "@/lib/ai/insights";
+import { generateInterviewReport } from "@/lib/ai/insights";
 import { sendEmail } from "@/lib/email";
 import { employerReviewReadyEmail } from "@/lib/email/templates";
 
 type ClaimedJob = {
   id: string;
-  type: "transcribe_response" | "generate_response_insights" | "generate_session_insights" | "notify_employer_ready";
+  type: "generate_ai_report" | "notify_employer_ready";
   payload: Record<string, unknown>;
   attempts: number;
   maxAttempts: number;
@@ -71,157 +67,65 @@ async function markFailed(job: ClaimedJob, error: unknown) {
       updatedAt: new Date(),
     })
     .where(eq(processingJobs.id, job.id));
-
-  if (exhausted && job.type === "transcribe_response") {
-    const responseId = job.payload.responseId as string;
-    await db.update(candidateResponses).set({ status: "transcription_failed" }).where(eq(candidateResponses.id, responseId));
-  }
 }
 
 async function enqueue(type: ClaimedJob["type"], payload: Record<string, unknown>) {
   await db.insert(processingJobs).values({ type, payload });
 }
 
-async function handleTranscribeResponse(payload: Record<string, unknown>) {
-  const responseId = payload.responseId as string;
-
-  const [row] = await db
-    .select({
-      response: candidateResponses,
-      storagePath: videoAssets.storagePath,
-      mimeType: videoAssets.mimeType,
-    })
-    .from(candidateResponses)
-    .innerJoin(videoAssets, eq(videoAssets.id, candidateResponses.videoAssetId))
-    .where(eq(candidateResponses.id, responseId))
-    .limit(1);
-
-  if (!row) throw new Error(`Response ${responseId} not found`);
-
-  await db.update(candidateResponses).set({ status: "transcribing" }).where(eq(candidateResponses.id, responseId));
-
-  const text = await transcribeVideo(row.storagePath, row.mimeType);
-
-  await db.insert(transcripts).values({ responseId, text, provider: "openai" });
-  await db.update(candidateResponses).set({ status: "transcribed" }).where(eq(candidateResponses.id, responseId));
-
-  await enqueue("generate_response_insights", { responseId });
-}
-
-async function handleGenerateResponseInsights(payload: Record<string, unknown>) {
-  const responseId = payload.responseId as string;
-
-  const [row] = await db
-    .select({
-      response: candidateResponses,
-      transcript: transcripts.text,
-      question: interviewQuestions.prompt,
-      evaluationGuidance: interviewQuestions.evaluationGuidance,
-      jobTitle: jobs.title,
-      jobId: jobs.id,
-    })
-    .from(candidateResponses)
-    .innerJoin(transcripts, eq(transcripts.responseId, candidateResponses.id))
-    .innerJoin(interviewQuestions, eq(interviewQuestions.id, candidateResponses.questionId))
-    .innerJoin(jobs, eq(jobs.id, interviewQuestions.jobId))
-    .where(eq(candidateResponses.id, responseId))
-    .limit(1);
-
-  if (!row) throw new Error(`Response ${responseId} not found`);
-
-  const insight = await generateResponseInsights({
-    jobTitle: row.jobTitle,
-    question: row.question,
-    evaluationGuidance: row.evaluationGuidance,
-    transcript: row.transcript,
-  });
-
-  await db
-    .insert(responseInsights)
-    .values({
-      responseId,
-      summary: insight.summary,
-      evidence: insight.evidence,
-      strongSignals: insight.strongSignals,
-      areasToReview: insight.areasToReview,
-      model: process.env.OPENAI_INSIGHTS_MODEL ?? "gpt-4.1",
-    })
-    .onConflictDoUpdate({
-      target: responseInsights.responseId,
-      set: {
-        summary: insight.summary,
-        evidence: insight.evidence,
-        strongSignals: insight.strongSignals,
-        areasToReview: insight.areasToReview,
-      },
-    });
-
-  // If every response in this session now has insights, roll up the session-level summary.
-  const sessionId = row.response.sessionId;
-  const allResponses = await db.select().from(candidateResponses).where(eq(candidateResponses.sessionId, sessionId));
-  const allQuestions = await db.select({ id: interviewQuestions.id }).from(interviewQuestions).where(eq(interviewQuestions.jobId, row.jobId));
-
-  const insightedCount = await db
-    .select({ responseId: responseInsights.responseId })
-    .from(responseInsights)
-    .innerJoin(candidateResponses, eq(candidateResponses.id, responseInsights.responseId))
-    .where(eq(candidateResponses.sessionId, sessionId));
-
-  if (allResponses.length >= allQuestions.length && insightedCount.length >= allQuestions.length) {
-    await enqueue("generate_session_insights", { sessionId });
-  }
-}
-
-async function handleGenerateSessionInsights(payload: Record<string, unknown>) {
+async function handleGenerateAiReport(payload: Record<string, unknown>) {
   const sessionId = payload.sessionId as string;
 
-  const rows = await db
+  const [row] = await db
     .select({
-      question: interviewQuestions.prompt,
-      summary: responseInsights.summary,
+      transcriptText: transcripts.text,
+      jobTitle: jobs.title,
+      interviewerRole: aiInterviewConfigs.interviewerRole,
+      focusAreas: aiInterviewConfigs.focusAreas,
     })
-    .from(candidateResponses)
-    .innerJoin(interviewQuestions, eq(interviewQuestions.id, candidateResponses.questionId))
-    .innerJoin(responseInsights, eq(responseInsights.responseId, candidateResponses.id))
-    .where(eq(candidateResponses.sessionId, sessionId))
-    .orderBy(asc(interviewQuestions.orderIndex));
-
-  if (rows.length === 0) throw new Error(`No insighted responses for session ${sessionId}`);
-
-  const [sessionRow] = await db
-    .select({ jobTitle: jobs.title })
     .from(interviewSessions)
+    .innerJoin(transcripts, eq(transcripts.sessionId, interviewSessions.id))
     .innerJoin(candidateInvitations, eq(candidateInvitations.id, interviewSessions.invitationId))
     .innerJoin(jobs, eq(jobs.id, candidateInvitations.jobId))
+    .innerJoin(aiInterviewConfigs, eq(aiInterviewConfigs.jobId, jobs.id))
     .where(eq(interviewSessions.id, sessionId))
     .limit(1);
 
-  const insight = await generateSessionInsights({
-    jobTitle: sessionRow?.jobTitle ?? "this role",
-    perQuestion: rows.map((r) => ({ question: r.question, summary: r.summary })),
+  if (!row) throw new Error(`Session ${sessionId} has no transcript yet`);
+
+  const report = await generateInterviewReport({
+    jobTitle: row.jobTitle,
+    interviewerRole: row.interviewerRole,
+    focusAreas: row.focusAreas,
+    transcript: row.transcriptText,
   });
 
   await db
-    .insert(sessionInsights)
+    .insert(aiReports)
     .values({
       sessionId,
-      overallSummary: insight.overallSummary,
-      relevantExperience: insight.relevantExperience,
-      areasToExplore: insight.areasToExplore,
-      suggestedFollowUps: insight.suggestedFollowUps,
-      model: process.env.OPENAI_INSIGHTS_MODEL ?? "gpt-4.1",
+      summary: report.summary,
+      relevantExperience: report.relevantExperience,
+      strongSignals: report.strongSignals,
+      areasToReview: report.areasToReview,
+      suggestedFollowUps: report.suggestedFollowUps,
+      model: process.env.ANTHROPIC_INSIGHTS_MODEL ?? "claude-opus-5",
     })
     .onConflictDoUpdate({
-      target: sessionInsights.sessionId,
+      target: aiReports.sessionId,
       set: {
-        overallSummary: insight.overallSummary,
-        relevantExperience: insight.relevantExperience,
-        areasToExplore: insight.areasToExplore,
-        suggestedFollowUps: insight.suggestedFollowUps,
+        summary: report.summary,
+        relevantExperience: report.relevantExperience,
+        strongSignals: report.strongSignals,
+        areasToReview: report.areasToReview,
+        suggestedFollowUps: report.suggestedFollowUps,
       },
     });
 
-  await db.update(interviewSessions).set({ status: "ready_for_review", updatedAt: new Date() }).where(eq(interviewSessions.id, sessionId));
+  await db
+    .update(interviewSessions)
+    .set({ status: "ready_for_review", updatedAt: new Date() })
+    .where(eq(interviewSessions.id, sessionId));
 
   await enqueue("notify_employer_ready", { sessionId });
 }
@@ -274,14 +178,8 @@ export async function processNextJob(): Promise<"empty" | "processed"> {
 
   try {
     switch (job.type) {
-      case "transcribe_response":
-        await handleTranscribeResponse(job.payload);
-        break;
-      case "generate_response_insights":
-        await handleGenerateResponseInsights(job.payload);
-        break;
-      case "generate_session_insights":
-        await handleGenerateSessionInsights(job.payload);
+      case "generate_ai_report":
+        await handleGenerateAiReport(job.payload);
         break;
       case "notify_employer_ready":
         await handleNotifyEmployerReady(job.payload);

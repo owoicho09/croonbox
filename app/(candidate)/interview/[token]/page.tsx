@@ -21,6 +21,7 @@ function InvalidLink({ message }: { message: string }) {
   );
 }
 
+// "failed" is deliberately excluded — a candidate whose call dropped can restart from the link.
 const FINISHED_STATUSES = new Set(["completed", "processing", "ready_for_review", "reviewed"]);
 
 export default async function CandidateInterviewPage({ params }: PageProps<"/interview/[token]">) {
@@ -31,7 +32,7 @@ export default async function CandidateInterviewPage({ params }: PageProps<"/int
   if (result.status === "revoked") return <InvalidLink message="This interview link has been revoked." />;
   if (result.status === "expired") return <InvalidLink message="This interview link has expired." />;
 
-  const { job, session, organizationName, questions } = result;
+  const { job, session, organizationName, questionCount } = result;
 
   return (
     <InterviewFlow
@@ -39,16 +40,7 @@ export default async function CandidateInterviewPage({ params }: PageProps<"/int
       jobTitle={job.title}
       companyName={organizationName}
       candidateInstructions={job.candidateInstructions}
-      defaultPrepSeconds={job.defaultPrepSeconds}
-      defaultResponseSeconds={job.defaultResponseSeconds}
-      retakesAllowed={job.retakesAllowed}
-      questions={questions.map((q) => ({
-        id: q.id,
-        prompt: q.prompt,
-        prepSeconds: q.prepSeconds,
-        responseSeconds: q.responseSeconds,
-      }))}
-      answeredQuestionIds={result.responses.map((r) => r.questionId)}
+      questionCount={questionCount}
       alreadyFinished={FINISHED_STATUSES.has(session.status)}
     />
   );

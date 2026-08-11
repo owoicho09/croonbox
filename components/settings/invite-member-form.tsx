@@ -4,10 +4,12 @@ import { useActionState } from "react";
 import { inviteTeamMemberAction } from "@/lib/actions/team";
 import { Input } from "@/components/ui/input";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useActionToast } from "@/lib/hooks/use-action-toast";
 import type { ActionState } from "@/lib/actions/auth";
 
 export function InviteMemberForm() {
   const [state, formAction] = useActionState<ActionState, FormData>(inviteTeamMemberAction, undefined);
+  useActionToast(state, "Invite sent.");
 
   return (
     <form action={formAction} className="flex items-end gap-3">

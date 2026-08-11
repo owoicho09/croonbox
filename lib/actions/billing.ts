@@ -29,8 +29,8 @@ export async function startCheckoutAction() {
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: process.env.STRIPE_PRICE_PROFESSIONAL, quantity: 1 }],
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings/billing?checkout=success`,
-    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings/billing?checkout=cancelled`,
+    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing&checkout=success`,
+    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing&checkout=cancelled`,
     client_reference_id: organization.id,
   });
 
@@ -45,7 +45,7 @@ export async function openBillingPortalAction() {
   const stripe = getStripe();
   const session = await stripe.billingPortal.sessions.create({
     customer: subscription.stripeCustomerId,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings/billing`,
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing`,
   });
 
   redirect(session.url);

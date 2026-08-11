@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { interviewSessions, candidateInvitations, jobs, reviewNotes } from "@/lib/db/schema";
+import { interviewSessions, candidateInvitations, jobs, reviewNotes, activityLog } from "@/lib/db/schema";
 import { requireOrgContext } from "@/lib/org/context";
 
 async function requireSessionInOrg(sessionId: string, organizationId: string) {
@@ -41,6 +41,14 @@ export async function setDecisionAction(sessionId: string, decision: "shortliste
     .update(interviewSessions)
     .set({ decision, decidedBy: user.id, decidedAt: new Date(), status: nextStatus, updatedAt: new Date() })
     .where(eq(interviewSessions.id, sessionId));
+
+  await db.insert(activityLog).values({
+    organizationId: organization.id,
+    actorUserId: user.id,
+    action: `candidate.${decision}`,
+    entityType: "job",
+    entityId: jobId,
+  });
 
   revalidatePath(`/candidates/${sessionId}`);
   revalidatePath("/candidates");

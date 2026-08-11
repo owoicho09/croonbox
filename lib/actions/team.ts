@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, count } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { teamInvitations, memberships } from "@/lib/db/schema";
@@ -47,7 +47,7 @@ export async function inviteTeamMemberAction(_prev: ActionState, formData: FormD
     }),
   });
 
-  revalidatePath("/settings");
+  revalidatePath("/team");
   return { error: undefined };
 }
 
@@ -83,4 +83,42 @@ export async function acceptTeamInvitationAction(token: string) {
   await db.update(teamInvitations).set({ status: "accepted" }).where(eq(teamInvitations.id, invitation.id));
 
   redirect("/dashboard");
+}
+
+// Plain <form action> targets (not wired through useActionState), so these return void — the
+// remove/revoke buttons only render for owners against rows already known to exist, so the
+// guard branches below are backstops, not user-facing error paths.
+export async function removeMemberAction(membershipId: string): Promise<void> {
+  const { organization, membership } = await requireOrgContext();
+  if (membership.role !== "owner") return;
+
+  const [target] = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, organization.id)))
+    .limit(1);
+  if (!target) return;
+
+  if (target.role === "owner") {
+    const [{ value: ownerCount }] = await db
+      .select({ value: count() })
+      .from(memberships)
+      .where(and(eq(memberships.organizationId, organization.id), eq(memberships.role, "owner")));
+    if (ownerCount <= 1) return;
+  }
+
+  await db.delete(memberships).where(eq(memberships.id, membershipId));
+  revalidatePath("/team");
+}
+
+export async function revokeTeamInvitationAction(invitationId: string): Promise<void> {
+  const { organization, membership } = await requireOrgContext();
+  if (membership.role !== "owner") return;
+
+  await db
+    .update(teamInvitations)
+    .set({ status: "revoked" })
+    .where(and(eq(teamInvitations.id, invitationId), eq(teamInvitations.organizationId, organization.id)));
+
+  revalidatePath("/team");
 }

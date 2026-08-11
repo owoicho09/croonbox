@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { toast } from "sonner";
 import { addReviewNoteAction } from "@/lib/actions/review";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ export function NoteForm({ sessionId }: { sessionId: string }) {
       action={async (formData) => {
         await action(formData);
         formRef.current?.reset();
+        toast.success("Note added.");
       }}
       className="space-y-2"
     >

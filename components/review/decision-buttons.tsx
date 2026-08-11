@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { toast } from "sonner";
 import { ThumbsUp, HelpCircle, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { setDecisionAction } from "@/lib/actions/review";
@@ -18,7 +19,7 @@ export function DecisionButtons({ sessionId, decision }: { sessionId: string; de
   const [isPending, startTransition] = useTransition();
 
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       {options.map((opt) => {
         const active = decision === opt.value;
         return (
@@ -28,7 +29,12 @@ export function DecisionButtons({ sessionId, decision }: { sessionId: string; de
             size="sm"
             disabled={isPending}
             className={cn(active && opt.value === "rejected" && "bg-destructive hover:bg-destructive/90")}
-            onClick={() => startTransition(() => setDecisionAction(sessionId, opt.value))}
+            onClick={() =>
+              startTransition(async () => {
+                await setDecisionAction(sessionId, opt.value);
+                toast.success(`Marked as ${opt.label}.`);
+              })
+            }
           >
             <opt.icon className="h-4 w-4" /> {opt.label}
           </Button>

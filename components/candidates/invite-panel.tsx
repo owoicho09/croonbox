@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   inviteSingleCandidateAction,
   inviteBulkCandidatesAction,
@@ -12,6 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+
+function useInviteToast(state: InviteState) {
+  useEffect(() => {
+    if (!state) return;
+    if (state.summary) toast.success(state.summary);
+    else if (state.error) toast.error(state.error);
+  }, [state]);
+}
 
 function ResultBanner({ state }: { state: InviteState }) {
   if (!state) return null;
@@ -31,6 +40,10 @@ export function InvitePanel({ jobId }: { jobId: string }) {
   const [singleState, singleFormAction] = useActionState<InviteState, FormData>(singleAction, undefined);
   const [bulkState, bulkFormAction] = useActionState<InviteState, FormData>(bulkAction, undefined);
   const [csvState, csvFormAction] = useActionState<InviteState, FormData>(csvAction, undefined);
+
+  useInviteToast(singleState);
+  useInviteToast(bulkState);
+  useInviteToast(csvState);
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">

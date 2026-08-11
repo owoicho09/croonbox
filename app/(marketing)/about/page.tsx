@@ -12,7 +12,7 @@ const values = [
   {
     icon: Clock,
     title: "Candidate Experience",
-    description: "The async format respects candidates' time and lets them perform at their best.",
+    description: "Candidates start their live interview whenever works for them — no scheduling back-and-forth.",
   },
   {
     icon: Globe2,
@@ -32,7 +32,7 @@ export default function AboutPage() {
       <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Building a Fairer First Round</h1>
       <p className="mt-4 max-w-2xl text-lg text-muted-foreground">
         Croonbox brings structure and AI-assisted review together so hiring teams can run consistent
-        first-round interviews without a live call for every candidate.
+        first-round interviews without coordinating a human interviewer&rsquo;s calendar for every candidate.
       </p>
 
       <div className="mt-16 grid gap-8 sm:grid-cols-2">

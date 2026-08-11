@@ -1,15 +1,7 @@
 import "server-only";
-import { eq, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  candidateInvitations,
-  candidates,
-  jobs,
-  interviewQuestions,
-  interviewSessions,
-  candidateResponses,
-  organizations,
-} from "@/lib/db/schema";
+import { candidateInvitations, candidates, jobs, aiInterviewConfigs, interviewSessions, organizations } from "@/lib/db/schema";
 import { hashToken } from "@/lib/auth/tokens";
 
 export async function loadInterviewByToken(token: string) {
@@ -22,12 +14,14 @@ export async function loadInterviewByToken(token: string) {
       job: jobs,
       session: interviewSessions,
       organizationName: organizations.name,
+      questionCount: aiInterviewConfigs.questions,
     })
     .from(candidateInvitations)
     .innerJoin(candidates, eq(candidateInvitations.candidateId, candidates.id))
     .innerJoin(jobs, eq(candidateInvitations.jobId, jobs.id))
     .innerJoin(organizations, eq(jobs.organizationId, organizations.id))
     .innerJoin(interviewSessions, eq(interviewSessions.invitationId, candidateInvitations.id))
+    .leftJoin(aiInterviewConfigs, eq(aiInterviewConfigs.jobId, jobs.id))
     .where(eq(candidateInvitations.tokenHash, tokenHash))
     .limit(1);
 
@@ -36,17 +30,6 @@ export async function loadInterviewByToken(token: string) {
   if (row.invitation.status === "revoked") return { status: "revoked" as const };
   if (row.invitation.expiresAt.getTime() < Date.now()) return { status: "expired" as const };
 
-  const questions = await db
-    .select()
-    .from(interviewQuestions)
-    .where(eq(interviewQuestions.jobId, row.job.id))
-    .orderBy(asc(interviewQuestions.orderIndex));
-
-  const responses = await db
-    .select()
-    .from(candidateResponses)
-    .where(eq(candidateResponses.sessionId, row.session.id));
-
   return {
     status: "ok" as const,
     invitation: row.invitation,
@@ -54,7 +37,6 @@ export async function loadInterviewByToken(token: string) {
     job: row.job,
     session: row.session,
     organizationName: row.organizationName,
-    questions,
-    responses,
+    questionCount: row.questionCount?.length ?? 0,
   };
 }

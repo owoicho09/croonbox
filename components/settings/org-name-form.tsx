@@ -5,10 +5,12 @@ import { updateOrganizationNameAction } from "@/lib/actions/organization";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useActionToast } from "@/lib/hooks/use-action-toast";
 import type { ActionState } from "@/lib/actions/auth";
 
 export function OrgNameForm({ name }: { name: string }) {
   const [state, formAction] = useActionState<ActionState, FormData>(updateOrganizationNameAction, undefined);
+  useActionToast(state, "Workspace name updated.");
 
   return (
     <form action={formAction} className="flex items-end gap-3">
