@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { eq, and, count, desc, inArray } from "drizzle-orm";
+import { eq, and, ne, count, desc, inArray } from "drizzle-orm";
 import { Plus, Briefcase, Users, Sparkles, CheckCircle2, Circle } from "lucide-react";
 import { db } from "@/lib/db";
 import { jobs, candidateInvitations, candidates, interviewSessions, aiInterviewConfigs, activityLog } from "@/lib/db/schema";
@@ -19,10 +19,10 @@ const REPORT_READY_STATUSES = ["ready_for_review", "reviewed"];
 export default async function DashboardPage() {
   const { user, organization } = await requireOrgContext();
 
-  const [orgJobs, pipelineRows, recentActivity, hasAnyInvite, hasAnyReviewed] = await Promise.all([
+  const [orgJobs, pipelineRows, recentActivity, hasAnyInvite, hasAnyDecision] = await Promise.all([
     db.select().from(jobs).where(eq(jobs.organizationId, organization.id)).orderBy(desc(jobs.createdAt)),
     db
-      .select({ jobId: candidateInvitations.jobId, status: interviewSessions.status })
+      .select({ jobId: candidateInvitations.jobId, status: interviewSessions.status, decision: interviewSessions.decision })
       .from(candidateInvitations)
       .innerJoin(jobs, eq(jobs.id, candidateInvitations.jobId))
       .innerJoin(candidates, eq(candidates.id, candidateInvitations.candidateId))
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
       .innerJoin(jobs, eq(jobs.id, candidateInvitations.jobId))
       .innerJoin(candidates, eq(candidates.id, candidateInvitations.candidateId))
       .where(
-        and(eq(jobs.organizationId, organization.id), eq(interviewSessions.status, "reviewed"), eq(candidates.isPreview, false)),
+        and(eq(jobs.organizationId, organization.id), ne(interviewSessions.decision, "none"), eq(candidates.isPreview, false)),
       ),
   ]);
 
@@ -65,7 +65,7 @@ export default async function DashboardPage() {
   const started = pipelineRows.filter((r) => STARTED_STATUSES.includes(r.status)).length;
   const completedCount = pipelineRows.filter((r) => COMPLETED_STATUSES.includes(r.status)).length;
   const reportsReady = pipelineRows.filter((r) => REPORT_READY_STATUSES.includes(r.status)).length;
-  const reviewedOrShortlisted = pipelineRows.filter((r) => r.status === "reviewed").length;
+  const reviewedOrShortlisted = pipelineRows.filter((r) => r.decision !== "none").length;
 
   const countsByJob = new Map<string, { invited: number; completed: number; reportsReady: number }>();
   for (const row of pipelineRows) {
@@ -96,7 +96,7 @@ export default async function DashboardPage() {
     { label: "Create your first job", done: orgJobs.length > 0 },
     { label: "Generate an AI interviewer", done: configuredJobIds.size > 0 },
     { label: "Invite a candidate", done: (hasAnyInvite[0]?.value ?? 0) > 0 },
-    { label: "Review your first report", done: (hasAnyReviewed[0]?.value ?? 0) > 0 },
+    { label: "Review your first report", done: (hasAnyDecision[0]?.value ?? 0) > 0 },
   ];
   const showChecklist = checklist.some((c) => !c.done);
 

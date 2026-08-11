@@ -14,13 +14,12 @@ export default function AppleIcon() {
           alignItems: "center",
           justifyContent: "center",
           background: "#2563eb",
-          color: "#ffffff",
-          fontSize: 96,
-          fontWeight: 700,
-          fontFamily: "-apple-system, Helvetica, Arial, sans-serif",
         }}
       >
-        C
+        <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+          <rect x="2" y="6" width="14" height="12" rx="2" />
+        </svg>
       </div>
     ),
     { ...size },

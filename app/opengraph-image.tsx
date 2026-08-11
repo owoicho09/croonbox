@@ -30,16 +30,10 @@ export default function OpengraphImage() {
               background: "#2563eb",
             }}
           >
-            <div
-              style={{
-                width: 0,
-                height: 0,
-                borderTop: "16px solid transparent",
-                borderBottom: "16px solid transparent",
-                borderLeft: "26px solid #ffffff",
-                marginLeft: 6,
-              }}
-            />
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+              <rect x="2" y="6" width="14" height="12" rx="2" />
+            </svg>
           </div>
           <div style={{ display: "flex", fontSize: 76, fontWeight: 700, color: "#ffffff" }}>Croonbox</div>
         </div>
