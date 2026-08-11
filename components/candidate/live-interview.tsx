@@ -54,18 +54,34 @@ export function LiveInterview({
   const recordStartRef = useRef(0);
   const conversationRef = useRef<Conversation | null>(null);
   const conversationIdRef = useRef<string | null>(null);
+  const mixNodesRef = useRef<{
+    micSource: MediaStreamAudioSourceNode;
+    mixDestination: MediaStreamAudioDestinationNode;
+  } | null>(null);
+
+  const cleanupMixNodes = useCallback(() => {
+    if (mixNodesRef.current) {
+      mixNodesRef.current.micSource.disconnect();
+      mixNodesRef.current.mixDestination.disconnect();
+      mixNodesRef.current = null;
+    }
+  }, []);
 
   const finishRecording = useCallback((): Promise<Blob> => {
     return new Promise((resolve) => {
       const recorder = recorderRef.current;
       if (!recorder || recorder.state === "inactive") {
+        cleanupMixNodes();
         resolve(new Blob(chunksRef.current, { type: pickMimeType() }));
         return;
       }
-      recorder.onstop = () => resolve(new Blob(chunksRef.current, { type: recorder.mimeType }));
+      recorder.onstop = () => {
+        cleanupMixNodes();
+        resolve(new Blob(chunksRef.current, { type: recorder.mimeType }));
+      };
       recorder.stop();
     });
-  }, []);
+  }, [cleanupMixNodes]);
 
   const handleNaturalEnd = useCallback(async () => {
     setPhase("wrapping-up");
@@ -102,9 +118,10 @@ export function LiveInterview({
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         recorderRef.current.stop();
       }
+      cleanupMixNodes();
       await failInterviewAction(token, reason).catch(() => {});
     },
-    [token],
+    [token, cleanupMixNodes],
   );
 
   useEffect(() => {
@@ -113,16 +130,6 @@ export function LiveInterview({
     let cancelled = false;
 
     async function connect() {
-      // Start local recording immediately so we capture the full conversation.
-      const mimeType = pickMimeType();
-      const recorder = new MediaRecorder(stream, { mimeType });
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.start();
-      recorderRef.current = recorder;
-      recordStartRef.current = Date.now();
-
       try {
         const { signedUrl, dynamicVariables } = await startLiveInterviewAction(token);
         if (cancelled) return;
@@ -155,7 +162,42 @@ export function LiveInterview({
           },
         });
 
+        if (cancelled) {
+          conversation.endSession();
+          return;
+        }
         conversationRef.current = conversation;
+
+        // The SDK plays the agent's voice through its own internal AudioContext graph,
+        // which MediaRecorder can't see. Tap the SDK's output AnalyserNode (an undocumented
+        // but stable part of its playback graph) and mix it with the candidate's mic into a
+        // single track so the recording captures both sides of the conversation.
+        let recordingStream = stream;
+        try {
+          const analyser = (
+            conversation as unknown as { output?: { getAnalyser?: () => AnalyserNode } }
+          ).output?.getAnalyser?.();
+          if (analyser) {
+            const ctx = analyser.context as AudioContext;
+            const micSource = ctx.createMediaStreamSource(stream);
+            const mixDestination = ctx.createMediaStreamDestination();
+            micSource.connect(mixDestination);
+            analyser.connect(mixDestination);
+            mixNodesRef.current = { micSource, mixDestination };
+            recordingStream = new MediaStream([...stream.getVideoTracks(), ...mixDestination.stream.getAudioTracks()]);
+          }
+        } catch {
+          // Fall back to candidate-only audio if the SDK's internal graph isn't reachable.
+        }
+
+        const mimeType = pickMimeType();
+        const recorder = new MediaRecorder(recordingStream, { mimeType });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
+        recorder.start();
+        recorderRef.current = recorder;
+        recordStartRef.current = Date.now();
       } catch {
         if (!cancelled) handleFailure("Couldn't connect to the interviewer. Check your connection and try again.");
       }
@@ -165,6 +207,7 @@ export function LiveInterview({
 
     return () => {
       cancelled = true;
+      cleanupMixNodes();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream, token]);
