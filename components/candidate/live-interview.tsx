@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Conversation } from "@elevenlabs/client";
-import { PhoneOff, Mic, Sparkles } from "lucide-react";
+import { PhoneOff, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AgentWaveform } from "@/components/candidate/agent-waveform";
 import {
   startLiveInterviewAction,
   requestRecordingUploadTicketAction,
@@ -47,6 +48,7 @@ export function LiveInterview({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [captions, setCaptions] = useState<{ role: "agent" | "candidate"; text: string }[]>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -137,6 +139,11 @@ export function LiveInterview({
         const conversation = await Conversation.startSession({
           signedUrl,
           dynamicVariables,
+          overrides: {
+            agent: {
+              firstMessage: dynamicVariables.opening_line,
+            },
+          },
           onConnect: ({ conversationId }) => {
             conversationIdRef.current = conversationId;
             if (!cancelled) setPhase("active");
@@ -174,15 +181,16 @@ export function LiveInterview({
         // single track so the recording captures both sides of the conversation.
         let recordingStream = stream;
         try {
-          const analyser = (
+          const tappedAnalyser = (
             conversation as unknown as { output?: { getAnalyser?: () => AnalyserNode } }
           ).output?.getAnalyser?.();
-          if (analyser) {
-            const ctx = analyser.context as AudioContext;
+          if (tappedAnalyser) {
+            if (!cancelled) setAnalyser(tappedAnalyser);
+            const ctx = tappedAnalyser.context as AudioContext;
             const micSource = ctx.createMediaStreamSource(stream);
             const mixDestination = ctx.createMediaStreamDestination();
             micSource.connect(mixDestination);
-            analyser.connect(mixDestination);
+            tappedAnalyser.connect(mixDestination);
             mixNodesRef.current = { micSource, mixDestination };
             recordingStream = new MediaStream([...stream.getVideoTracks(), ...mixDestination.stream.getAudioTracks()]);
           }
@@ -239,6 +247,12 @@ export function LiveInterview({
       <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-navy">
         <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
 
+        {(phase === "active" || phase === "wrapping-up") && (
+          <span className="absolute bottom-3 left-3 rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+            You
+          </span>
+        )}
+
         {phase === "connecting" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-navy/80 text-white">
             <Mic className="h-6 w-6 animate-pulse" />
@@ -247,13 +261,8 @@ export function LiveInterview({
         )}
 
         {(phase === "active" || phase === "wrapping-up") && (
-          <div className="absolute bottom-3 right-3 flex w-32 flex-col items-center gap-1.5 rounded-xl bg-black/60 px-3 py-3 text-white backdrop-blur-sm">
-            <div className="relative flex h-10 w-10 items-center justify-center">
-              {agentSpeaking && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />}
-              <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                <Sparkles className="h-4 w-4" />
-              </span>
-            </div>
+          <div className="absolute bottom-3 right-3 flex w-32 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-3 py-3 text-white shadow-lg backdrop-blur-sm">
+            <AgentWaveform analyser={analyser} speaking={agentSpeaking} />
             <p className="text-[10px] font-medium uppercase tracking-wide text-white/70">AI Interviewer</p>
             <p className="text-center text-[11px] text-white">{agentSpeaking ? "Speaking…" : "Listening…"}</p>
           </div>

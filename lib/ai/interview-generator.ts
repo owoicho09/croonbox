@@ -60,7 +60,7 @@ Generate the interview plan with:
    - "prompt": the actual question the AI interviewer will ask, phrased naturally and conversationally
    - "followUpGuidance": (optional) what a good follow-up probe looks like if the candidate's answer is vague
 - "tone": 1 short phrase describing the interview's tone (e.g. "warm, professional, conversational")
-- "openingLine": the literal first thing the AI interviewer says to the candidate, including a brief intro of itself and the role
+- "openingLine": the literal first thing the AI interviewer says to the candidate — a brief, warm, natural self-introduction (name/role) and a one-line intro to the conversation, phrased like a real person greeting someone, not reading from a script. 1-2 sentences.
 - "closingLine": the literal line the AI interviewer uses to wrap up naturally once all questions are covered
 - "followUpGuidance": 1-2 sentences of general guidance for how the AI should probe deeper across the whole interview
 - "avoidList": short list of topics/behaviors the AI interviewer must avoid (illegal questions, going off-topic, rambling, more than one follow-up per question, etc.)`;
